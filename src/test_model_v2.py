@@ -19,7 +19,7 @@ def test_model_registration():
     # 3. 手动注入自定义模型标识和必要参数
     cfg.model = "custom_vizdoom_model"
     cfg.use_rnn = True
-    cfg.hidden_size = 128
+    cfg.rnn_size = 128 # 修复：hidden_size -> rnn_size
     
     # 4. 模拟观察空间和动作空间
     # 修复：SF 2.x 默认期望 Dict 类型的观察空间
@@ -40,8 +40,8 @@ def test_model_registration():
         obs = torch.randn(1, 1, 84, 84) # [Batch, Channels, H, W]
         obs_dict = {"obs": obs}
         
-        # RNN 状态：SF 2.x 默认将 h 和 c 拼接，大小为 2 * hidden_size
-        rnn_states = torch.zeros(1, 2 * cfg.hidden_size)
+        # RNN 状态：SF 2.x 默认将 h 和 c 拼接，大小为 2 * rnn_size
+        rnn_states = torch.zeros(1, 2 * cfg.rnn_size) # 修复：hidden_size -> rnn_size
         
         # 执行前向传播
         # ActorCritic 的 forward 返回一个包含 action_logits, values 等的 dict
