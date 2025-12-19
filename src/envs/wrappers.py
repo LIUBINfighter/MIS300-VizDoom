@@ -1,5 +1,6 @@
 import gymnasium as gym
 import numpy as np
+import cv2
 
 class RewardShapingWrapper(gym.Wrapper):
     """
@@ -59,12 +60,33 @@ class RewardShapingWrapper(gym.Wrapper):
 class ImageCleaningWrapper(gym.ObservationWrapper):
     """
     图像预处理包装器。
-    例如：灰度化、边缘检测、裁剪等。
+    实现：裁剪状态栏、灰度化、缩放至 84x84、归一化。
     """
     def __init__(self, env):
         super().__init__(env)
-        # 如果修改了观察空间的大小或通道，需要更新 self.observation_space
+        # 更新观察空间为 (1, 84, 84)，归一化后的 float32
+        self.observation_space = gym.spaces.Box(
+            low=0, high=1, shape=(1, 84, 84), dtype=np.float32
+        )
         
     def observation(self, obs):
-        # 示例：简单的归一化或处理
+        # 1. 灰度化 (如果是 RGB)
+        if len(obs.shape) == 3 and obs.shape[0] == 3: # CHW
+            obs = np.transpose(obs, (1, 2, 0)) # HWC
+            obs = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
+        elif len(obs.shape) == 3 and obs.shape[2] == 3: # HWC
+            obs = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
+            
+        # 2. 裁剪状态栏 (VizDoom 默认底部约 15-20% 是状态栏)
+        # 假设原始高度是 240，状态栏大约在 200 之后
+        h, w = obs.shape
+        obs = obs[:int(h * 0.85), :]
+        
+        # 3. 缩放至 84x84
+        obs = cv2.resize(obs, (84, 84), interpolation=cv2.INTER_AREA)
+        
+        # 4. 归一化并增加通道维度 (1, 84, 84)
+        obs = obs.astype(np.float32) / 255.0
+        obs = np.expand_dims(obs, axis=0)
+        
         return obs

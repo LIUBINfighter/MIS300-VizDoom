@@ -6,6 +6,10 @@ from sample_factory.envs.env_utils import register_env
 from sf_examples.vizdoom.doom.doom_utils import make_doom_env_from_spec, DoomSpec, DOOM_ENVS
 from src.envs.wrappers import RewardShapingWrapper, ImageCleaningWrapper
 
+class AttrDict(dict):
+    __getattr__ = dict.__getitem__
+    __setattr__ = dict.__setitem__
+
 def get_spec_by_scenario(scenario_name):
     """从内置的 DOOM_ENVS 中找到匹配场景文件的规格"""
     for spec in DOOM_ENVS:
@@ -17,12 +21,21 @@ def create_vizdoom_env(env_name, cfg=None, env_config=None, render_mode=None, **
     """
     基础环境创建函数。
     """
+    if cfg is None:
+        cfg = AttrDict(
+            record_to=None, 
+            env_frameskip=4, 
+            wide_aspect_ratio=False,
+            res_w=160,
+            res_h=120
+        )
+
     # 1. 定义场景映射
     scenarios = {
         "custom_doom_basic": "basic.cfg",
         "custom_doom_defend_the_center": "defend_the_center.cfg",
         "custom_doom_deadly_corridor": "deadly_corridor.cfg",
-        "custom_doom_health_gathering": "health_gathering.cfg",
+        "custom_doom_health_gathering": "health_gathering_supreme.cfg",
     }
     
     if env_name not in scenarios:
@@ -54,5 +67,6 @@ def create_vizdoom_env(env_name, cfg=None, env_config=None, render_mode=None, **
     
     # 4. 添加自定义 Wrapper
     env = RewardShapingWrapper(env)
+    env = ImageCleaningWrapper(env)
     
     return env
