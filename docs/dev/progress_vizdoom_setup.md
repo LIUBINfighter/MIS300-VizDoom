@@ -1,9 +1,11 @@
 # MIS300 ViZDoom 训练进展与可复用命令
 
-本页整理当前可直接复制使用的命令，以及环境/训练的关键结论，方便后续持续训练与评估。
+本页整理当前可直接复制使用的命令，以及环境/训练的关键结论。
+
+> **💡 进阶指南**: 关于自定义奖励函数、模块化环境结构以及 PyTorch 2.6+ 评估黑魔法，请参考 [custom_training_guide.md](custom_training_guide.md)。
 
 ## 概览
-- 环境测试：`vizdoom` 已在容器中无头渲染通过，场景能加载与运行。
+- 环境测试：`vizdoom` 已在容器中无头渲染通过。
 - 训练：使用 `sf_examples.vizdoom.train_vizdoom` 在 `doom_defend_the_center` 场景下启动训练，CPU 模式，已生成首个 checkpoint。
 - 评估：使用 `enjoy_vizdoom` 可运行评估并保存视频（注意 `--save_video` 为布尔开关）。
 - 常见提示：PipeWire 音频相关警告可忽略；需使用正确的环境名与显示配置。

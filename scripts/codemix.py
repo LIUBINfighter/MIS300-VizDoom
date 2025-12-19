@@ -1,4 +1,5 @@
 import os
+import time
 from pathlib import Path
 
 def get_files():
@@ -31,7 +32,13 @@ def get_files():
 
 def main():
     files = get_files()
-    output_file = "codemix_output.md"
+    
+    # Create dist directory if it doesn't exist
+    dist_dir = Path("dist")
+    dist_dir.mkdir(exist_ok=True)
+    
+    timestamp = time.strftime("%Y%m%d%H%M%S")
+    output_file = dist_dir / f"codemix-{timestamp}.md"
     
     with open(output_file, "w", encoding="utf-8") as f:
         # Write the list of relative paths first

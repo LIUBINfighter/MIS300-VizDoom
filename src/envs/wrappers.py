@@ -16,34 +16,43 @@ class RewardShapingWrapper(gym.Wrapper):
             'KILLCOUNT': info.get('KILLCOUNT', 0),
             'HEALTH': info.get('HEALTH', 100),
             'AMMO2': info.get('AMMO2', 0),
+            'POSITION_X': info.get('POSITION_X', 0),
         }
         return obs, info
 
     def step(self, action):
         obs, reward, terminated, truncated, info = self.env.step(action)
         
-        # 1. 击杀奖励 (Kill reward)
+        # 1. 击杀奖励 (针对所有场景)
         current_kills = info.get('KILLCOUNT', 0)
         diff_kills = current_kills - self.prev_vars.get('KILLCOUNT', 0)
         if diff_kills > 0:
-            reward += 15.0 * diff_kills # 增加击杀权重
-            
-        # 2. 掉血惩罚 (Health penalty)
+            reward += 20.0 * diff_kills # 死亡走廊杀敌更难，给 20 分
+
+        # 2. 前进奖励 (专门针对死亡走廊)
+        # 假设走廊是沿 X 轴延伸的
+        current_x = info.get('POSITION_X', 0)
+        diff_x = current_x - self.prev_vars.get('POSITION_X', 0)
+        if diff_x > 0:
+            reward += diff_x * 0.01 # 鼓励向前走
+
+        # 3. 掉血惩罚
         current_health = info.get('HEALTH', 100)
         diff_health = current_health - self.prev_vars.get('HEALTH', 100)
         if diff_health < 0:
-            reward += 0.2 * diff_health # 增加受伤惩罚
-            
-        # 3. 弹药消耗惩罚 (鼓励精准度)
+            reward += 0.5 * diff_health # 死亡走廊子弹多，惩罚重一点
+
+        # 4. 弹药惩罚
         current_ammo = info.get('AMMO2', 0)
-        diff_ammo = current_ammo - self.prev_vars.get('AMMO2', 0)
-        if diff_ammo < 0:
-            reward -= 0.1 # 每次开火扣除微量分数
-            
-        # 更新记录
-        self.prev_vars['KILLCOUNT'] = current_kills
-        self.prev_vars['HEALTH'] = current_health
-        self.prev_vars['AMMO2'] = current_ammo
+        if current_ammo < self.prev_vars.get('AMMO2', 0):
+            reward -= 0.2
+
+        self.prev_vars.update({
+            'KILLCOUNT': current_kills,
+            'HEALTH': current_health,
+            'AMMO2': current_ammo,
+            'POSITION_X': current_x,
+        })
         
         return obs, reward, terminated, truncated, info
 
