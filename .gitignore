@@ -1,6 +1,6 @@
 # data
 train_dir
-
+final_videos
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
