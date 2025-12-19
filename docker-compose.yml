@@ -15,3 +15,7 @@ services:
     #           capabilities: [gpu]
     environment:
       - PYTHONPATH=/app
+      - DISPLAY=:99
+    # 覆盖 Dockerfile 的 ENTRYPOINT，手动控制 xvfb
+    entrypoint: []
+    command: ["bash", "-c", "Xvfb :99 -screen 0 640x480x24 & sleep 2 && python main.py"]
