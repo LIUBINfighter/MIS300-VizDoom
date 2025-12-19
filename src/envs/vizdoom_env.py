@@ -13,7 +13,7 @@ def get_spec_by_scenario(scenario_name):
             return spec
     return None
 
-def create_vizdoom_env(env_name, cfg=None, env_config=None, **kwargs):
+def create_vizdoom_env(env_name, cfg=None, env_config=None, render_mode=None, **kwargs):
     """
     基础环境创建函数。
     """
@@ -49,8 +49,8 @@ def create_vizdoom_env(env_name, cfg=None, env_config=None, **kwargs):
         env_spec = DoomSpec(env_name, scenario_file, Discrete(3))
 
     # 3. 使用 Sample Factory 的基础工具创建环境
-    # 传入 spec, _env_name, cfg, env_config
-    env = make_doom_env_from_spec(env_spec, env_name, cfg, env_config, **kwargs)
+    # 传入 spec, _env_name, cfg, env_config, render_mode
+    env = make_doom_env_from_spec(env_spec, env_name, cfg, env_config, render_mode=render_mode, **kwargs)
     
     # 4. 添加自定义 Wrapper
     env = RewardShapingWrapper(env)

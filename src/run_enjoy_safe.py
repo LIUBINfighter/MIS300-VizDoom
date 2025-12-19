@@ -1,30 +1,36 @@
 import torch
 import numpy as np
-import numpy.dtypes  # 显式导入 dtypes 模块
+import numpy.dtypes
+import functools
 
-# 将 numpy 的各种标量和类型类加入 PyTorch 加载白名单
-try:
-    safe_list = [
-        np.core.multiarray.scalar,
-        np.dtype,
-        numpy.dtypes.Float64DType,  # 报错中明确提到的类
-        numpy.dtypes.Int64DType,    # 预防性添加
-    ]
+# --- 1. 注入白名单和黑魔法 ---
+torch.serialization.add_safe_globals([
+    np.core.multiarray.scalar, np.dtype, np.dtypes.Float64DType, np.dtypes.Int64DType
+])
+
+# 核心手术：拦截 torch.load 并修复 state_dict 的 Key
+original_torch_load = torch.load
+
+def patched_torch_load(*args, **kwargs):
+    # 强制关闭 weights_only 以确保能读取完整字典
+    kwargs['weights_only'] = False
+    checkpoint = original_torch_load(*args, **kwargs)
     
-    # 尝试添加 Sample Factory 的 AttrDict，这也是常见的拦截点
-    try:
-        from sample_factory.utils.utils import AttrDict
-        safe_list.append(AttrDict)
-    except ImportError:
-        pass
+    if isinstance(checkpoint, dict) and "model" in checkpoint:
+        print("🔧 检测到权重 Key 不匹配，正在进行自动修复...")
+        new_model_state = {}
+        for k, v in checkpoint["model"].items():
+            # 将 encoder.encoders.obs.enc 替换为 encoder.basic_encoder.enc
+            new_key = k.replace("encoder.encoders.obs.enc", "encoder.basic_encoder.enc")
+            new_model_state[new_key] = v
+        checkpoint["model"] = new_model_state
+    return checkpoint
 
-    torch.serialization.add_safe_globals(safe_list)
-    print(f"✅ 已更新 PyTorch 安全白名单: {[c.__name__ for c in safe_list if hasattr(c, '__name__')]}")
-except Exception as e:
-    print(f"⚠️ 注入白名单失败: {e}")
+torch.load = patched_torch_load
 
-# 导入并运行原有的 enjoy 脚本
+# --- 2. 运行 Enjoy ---
 from sf_examples.vizdoom.enjoy_vizdoom import main
+import src.envs  # 👈 确保这一行存在，用于注册自定义环境
 
 if __name__ == "__main__":
     # main() 会自动解析 sys.argv
