@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "vizdoom-rl-baseline"
+version = "0.1.0"
+description = "ViZDoom RL project with Sample Factory"
+authors = ["YourName <your@email.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.8,<3.13"
+# 核心 RL 库
+sample-factory = "^2.1.1"
+vizdoom = "1.2.3"
+gymnasium = "^0.28.1"
+numpy = "^1.24.0"
+# 深度学习后端
+torch = "^2.0.0"
+# 可视化与监控
+tensorboard = "^2.12.0"
+opencv-python = "^4.7.0"
+
+[tool.poetry.group.dev.dependencies]
+# 质量管控工具 (类似 ESLint/Prettier)
+ruff = "^0.1.0"
+mypy = "^1.5.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

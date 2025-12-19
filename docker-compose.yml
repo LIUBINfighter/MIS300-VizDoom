@@ -1,0 +1,17 @@
+services:
+  vizdoom-lab:
+    build: .
+    # 必须：Sample Factory 多进程通信需要
+    shm_size: "2gb"
+    volumes:
+      - .:/app
+    # 如果你有 NVIDIA GPU，开启以下配置
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    environment:
+      - PYTHONPATH=/app
