@@ -24,7 +24,7 @@ def create_vizdoom_env(env_name, cfg=None, env_config=None, render_mode=None, **
     if cfg is None:
         cfg = AttrDict(
             record_to=None, 
-            env_frameskip=4, 
+            env_frameskip=2, # 从 4 降到 2，提高操作细腻度
             wide_aspect_ratio=False,
             res_w=160,
             res_h=120

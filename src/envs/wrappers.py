@@ -58,33 +58,33 @@ class RewardShapingWrapper(gym.Wrapper):
 class ImageCleaningWrapper(gym.ObservationWrapper):
     """
     图像预处理包装器。
-    实现：裁剪状态栏、灰度化、缩放至 84x84、归一化。
+    实现：裁剪状态栏、缩放至 84x84、归一化、转换为 CHW。
+    支持 RGB 以提高辨识度。
     """
     def __init__(self, env):
         super().__init__(env)
-        # 更新观察空间为 (1, 84, 84)，归一化后的 float32
+        # 更新观察空间为 (3, 84, 84)，归一化后的 float32
         self.observation_space = gym.spaces.Box(
-            low=0, high=1, shape=(1, 84, 84), dtype=np.float32
+            low=0, high=1, shape=(3, 84, 84), dtype=np.float32
         )
         
     def observation(self, obs):
-        # 1. 灰度化 (如果是 RGB)
-        if len(obs.shape) == 3 and obs.shape[0] == 3: # CHW
-            obs = np.transpose(obs, (1, 2, 0)) # HWC
-            obs = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
-        elif len(obs.shape) == 3 and obs.shape[2] == 3: # HWC
-            obs = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
+        # VizDoom 出来的 obs 可能是 (H, W, 3) 或者是 (3, H, W)
+        # 统一处理为 HWC 进行裁剪和缩放
+        if obs.shape[0] == 3:
+            obs = np.transpose(obs, (1, 2, 0))
             
-        # 2. 裁剪状态栏 (VizDoom 默认底部约 15-20% 是状态栏)
-        # 假设原始高度是 240，状态栏大约在 200 之后
-        h, w = obs.shape
-        obs = obs[:int(h * 0.85), :]
+        # 1. 裁剪状态栏 (VizDoom 默认底部约 15-20% 是状态栏)
+        h, w = obs.shape[:2]
+        obs = obs[:int(h * 0.85), :, :]
         
-        # 3. 缩放至 84x84
+        # 2. 缩放至 84x84
         obs = cv2.resize(obs, (84, 84), interpolation=cv2.INTER_AREA)
         
-        # 4. 归一化并增加通道维度 (1, 84, 84)
+        # 3. 调整维度顺序 HWC -> CHW (PyTorch 需要)
+        obs = np.transpose(obs, (2, 0, 1))
+        
+        # 4. 归一化
         obs = obs.astype(np.float32) / 255.0
-        obs = np.expand_dims(obs, axis=0)
         
         return obs

@@ -82,7 +82,7 @@ def main():
     parser.add_argument("--checkpoint", type=str, required=True, help="Path to .pth file")
     parser.add_argument("--env", type=str, default="custom_doom_health_gathering", help="Env name")
     parser.add_argument("--episodes", type=int, default=3, help="Number of episodes")
-    parser.add_argument("--video-dir", type=str, default="final_videos", help="Output folder")
+    parser.add_argument("--video-dir", type=str, default="dist/final_videos", help="Output folder")
     parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
     
     args = parser.parse_args()
