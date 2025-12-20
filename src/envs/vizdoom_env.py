@@ -105,6 +105,10 @@ def create_vizdoom_env(env_name, cfg=None, env_config=None, render_mode=None, **
         else:
             content += '\navailable_game_variables = { KILLCOUNT HITCOUNT AMMO2 HEALTH FRAGCOUNT }\n'
         
+        # [新增] 物理外挂：加快转身速度，方便 AI 快速索敌
+        if 'player_turn_speed' not in content:
+            content += '\nplayer_turn_speed = 300\n'
+
         with open(local_cfg_path, 'w', encoding='utf-8') as f:
             f.write(content)
             

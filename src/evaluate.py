@@ -164,7 +164,23 @@ def main():
     try:
         checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
         state_dict = checkpoint['model'] if 'model' in checkpoint else checkpoint
-        model.load_state_dict(state_dict, strict=False)
+
+        # --- 过滤掉与当前模型 shape 不匹配的 key ---
+        model_state = model.state_dict()
+        filtered_state = {}
+        for k, v in state_dict.items():
+            if k in model_state:
+                try:
+                    if getattr(v, 'shape', None) == model_state[k].shape:
+                        filtered_state[k] = v
+                    else:
+                        print(f"[Info] Skipping checkpoint key {k} due to shape mismatch {getattr(v,'shape',None)} vs {model_state[k].shape}")
+                except Exception:
+                    print(f"[Info] Skipping checkpoint key {k} (couldn't compare shapes)")
+            else:
+                print(f"[Info] Skipping checkpoint key {k} (not present in model)")
+
+        model.load_state_dict(filtered_state, strict=False)
         print("✅ Weights loaded.")
     except Exception as e:
         print(f"❌ Error loading weights: {e}")

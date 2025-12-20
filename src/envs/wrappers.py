@@ -6,16 +6,19 @@ import types
 
 class RewardShapingWrapper(gym.Wrapper):
     """
-    奖励塑形包装器 - 狙击精英版 (Sniper Elite Edition)
-    特性：
-    1. 极度厌恶空枪 (Anti-Spray)
-    2. 动作平滑约束 (Anti-Jitter)
-    3. 鼓励爆头/击杀
+    奖励塑形包装器（增强版）
+
+    新增了两项核心意识：
+    - 危机反应 (Pain Reflex)：挨打时鼓励转头并惩罚不动
+    - 巡逻奖励 (Patrol Incentive)：未开枪时鼓励转头索敌
+
+    兼容性：能接受离散动作索引（0~4）或底层已经展开的 list/tuple/numpy 动作。
+    动作映射约定: 0:左, 1:右, 2:开火, 3:左+开火, 4:右+开火
     """
     def __init__(self, env):
         super().__init__(env)
         self.prev_vars = {}
-        self.last_action_idx = 0 # 记录上一步动作，用于计算平滑度
+        self.last_action_idx = 0 # 记录上一步的离散索引（0~4）
 
     def _query_game_variable(self, var):
         """安全查询底层变量"""
@@ -29,7 +32,6 @@ class RewardShapingWrapper(gym.Wrapper):
                 if c and hasattr(c, 'get_game_variable'):
                     try:
                         val = c.get_game_variable(var)
-                        # 🚨 防御性检查：确保不会返回 None（防止 Worker 因 NoneType 崩溃）
                         if val is None:
                             return 0.0
                         return val
@@ -38,6 +40,34 @@ class RewardShapingWrapper(gym.Wrapper):
         except:
             pass
         return 0.0
+
+    def _action_to_index(self, action):
+        """把可能的 list/tuple 动作映射成离散索引，若已是 int 则直接返回。"""
+        # 兼容 CompositeActionWrapper 的 real action ([1,0,0] 等)
+        try:
+            if isinstance(action, (list, tuple, np.ndarray)):
+                a = list(action)
+                # 预期格式 [left, right, fire]
+                left, right, fire = 0, 0, 0
+                if len(a) >= 3:
+                    left, right, fire = int(a[0]), int(a[1]), int(a[2])
+                if left == 1 and right == 0 and fire == 0:
+                    return 0
+                if left == 0 and right == 1 and fire == 0:
+                    return 1
+                if left == 0 and right == 0 and fire == 1:
+                    return 2
+                if left == 1 and right == 0 and fire == 1:
+                    return 3
+                if left == 0 and right == 1 and fire == 1:
+                    return 4
+                # 兜底：若无法解析，返回上次动作
+                return int(self.last_action_idx)
+            else:
+                # 可能是 numpy scalar
+                return int(action)
+        except Exception:
+            return int(self.last_action_idx)
 
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
@@ -51,7 +81,9 @@ class RewardShapingWrapper(gym.Wrapper):
         return obs, info
 
     def step(self, action):
-        # action 是一个 int (0~4)
+        # 兼容不同封装层：先把动作映射到离散索引
+        action_idx = self._action_to_index(action)
+
         obs, reward, terminated, truncated, info = self.env.step(action)
 
         # --- 1. 获取状态 ---
@@ -62,46 +94,64 @@ class RewardShapingWrapper(gym.Wrapper):
 
         diff_hits = curr_hits - self.prev_vars.get('HITCOUNT', 0)
         diff_kills = curr_kills - self.prev_vars.get('KILLCOUNT', 0)
+        diff_health = curr_health - self.prev_vars.get('HEALTH', 100)  # 负数表示掉血
         diff_ammo = self.prev_vars.get('AMMO2', 0) - curr_ammo
 
         # --- 2. 核心奖励逻辑 ---
 
-        # A. 基础生存 (活着就好，但不要太高，否则它会选择苟着)
+        # A. 基础生存 (活着就好)
         reward += 0.01 
 
-        # B. 击杀与命中 (重赏)
+        # B. 击杀 (最高优先级)
         if diff_kills > 0:
-            reward += 10.0 * diff_kills  # 杀敌是大目标
-        
-        if diff_hits > 0:
-            reward += 5.0 * diff_hits    # 命中是过程奖励（加重）
+            reward += 15.0 * diff_kills 
 
-        # C. 严厉的空枪惩罚 (Sniper Discipline)
-        # 只要消耗了子弹 (diff_ammo > 0) 且 没有命中 (diff_hits == 0)
-        # 就视为浪费。
+        # C. 命中 (过程奖励)
+        if diff_hits > 0:
+            reward += 2.0 * diff_hits
+
+        # D. 空枪惩罚 (防止乱射)
         if diff_ammo > 0:
             if diff_hits > 0:
-                reward += 0.5  # 有效射击，抵消消耗
+                reward += 0.5  # 命中抵消消耗
             else:
-                # 空枪！适当惩罚，不要罚死
-                # 这个值保持惩戒作用，但不会阻碍试错
-                reward -= 0.5  
+                reward -= 0.5  # 空枪微罚，保留试错勇气
+
+        # E. 掉血惩罚 (生存压力)
+        if diff_health < 0:
+            # 掉血是负数，乘以正系数 = 扣分
+            # 加大惩罚力度，让它怕死
+            reward += 0.2 * diff_health 
+
+        # === ✨ 新增逻辑开始 ===
+        # F. 危机反应 (Pain Reflex)
+        if diff_health < 0:
+            # 且当前没有在开火/命中 (说明面前可能没怪，是被背后偷袭)
+            if diff_hits == 0:
+                # 此时，如果它选择转头 (action 0,1,3,4)，我们减轻一点掉血惩罚，或者给予补偿
+                if action_idx in [0, 1, 3, 4]: 
+                    reward += 0.5 # 鼓励挨打时转身
+                else:
+                    reward -= 1.0 # 挨打还不动？重罚！
+
+        # G. 巡逻奖励 (Patrol Incentive)
+        # 如果当前没开枪 (diff_ammo == 0)，说明处于索敌阶段
+        if diff_ammo == 0:
+            # 鼓励它转头寻找敌人，而不是发呆
+            if action_idx in [0, 1]: 
+                reward += 0.05 
+            else:
+                # 没开枪又没转头 (发呆)，给予微小惩罚
+                reward -= 0.01
+        # === ✨ 新增逻辑结束 ===
 
         # D. 动作稳定性惩罚 (Anti-Jitter)
-        # 假设动作定义: 0:左, 1:右, 2:攻 ...
-        # 如果上一步是左(0)，这一步是右(1)，说明在抖动。
-        # 如果上一步是右(1)，这一步是左(0)，说明在抖动。
-        if (self.last_action_idx == 0 and action == 1) or \
-           (self.last_action_idx == 1 and action == 0):
+        if (self.last_action_idx == 0 and action_idx == 1) or \
+           (self.last_action_idx == 1 and action_idx == 0):
             reward -= 0.5 # 抖动惩罚
-        
-        # 记录当前动作为下一步做参考
-        self.last_action_idx = action
 
-        # E. 掉血惩罚 (稍微轻一点，让它敢于对枪)
-        diff_health = curr_health - self.prev_vars.get('HEALTH', 100)
-        if diff_health < 0:
-            reward += 0.05 * diff_health # 掉血微惩罚
+        # 记录当前动作为下一步做参考
+        self.last_action_idx = action_idx
 
         # --- 3. 更新状态 ---
         self.prev_vars = {
@@ -113,7 +163,9 @@ class RewardShapingWrapper(gym.Wrapper):
         
         # Log info
         info['HIT_INC'] = diff_hits
+        info['KILL_INC'] = diff_kills
         info['AMMO_USED'] = diff_ammo
+        info['HEALTH_DIFF'] = diff_health
 
         return obs, reward, terminated, truncated, info
 
