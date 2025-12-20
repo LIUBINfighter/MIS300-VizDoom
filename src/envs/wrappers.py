@@ -4,288 +4,168 @@ import cv2
 import vizdoom as vzd
 import types
 
-
 class RewardShapingWrapper(gym.Wrapper):
     """
-    自定义奖励包装器。
-    针对 Defend Center 优化的版本。
+    奖励塑形包装器 - 狙击手版 (Sniper Edition)
+    目标：消除乱开枪，鼓励精准点射。
     """
     def __init__(self, env):
         super().__init__(env)
         self.prev_vars = {}
 
     def _query_game_variable(self, var):
-        """Try to read a game variable from the underlying VizDoom object via several common attributes.
-        This is robust to multiple wrapper layers; it will traverse `.env`, `.unwrapped` and look for
-        attributes like `game`, `_game`, or direct get_game_variable implementations.
-        """
+        """安全地查询底层游戏变量"""
         try:
-            candidates = []
-            curr = self.env
-            seen = set()
-            # Traverse wrapper chain
-            while curr is not None and id(curr) not in seen:
-                seen.add(id(curr))
-                # direct method on wrapper
-                if hasattr(curr, 'get_game_variable') and isinstance(getattr(curr, 'get_game_variable'), types.MethodType):
-                    candidates.append(curr)
-                # attributes that may hold the underlying DoomGame
-                if hasattr(curr, 'game'):
-                    candidates.append(curr.game)
-                if hasattr(curr, '_game'):
-                    candidates.append(curr._game)
-                # try moving deeper
-                if hasattr(curr, 'unwrapped') and curr.unwrapped is not curr:
-                    curr = curr.unwrapped
-                elif hasattr(curr, 'env') and curr.env is not curr:
-                    curr = curr.env
-                else:
-                    break
-
+            unwrapped = getattr(self.env, 'unwrapped', None)
+            candidates = [unwrapped]
+            if unwrapped is not None:
+                if hasattr(unwrapped, 'game'): candidates.append(unwrapped.game)
+                if hasattr(unwrapped, '_game'): candidates.append(unwrapped._game)
+            
             for c in candidates:
-                if c is None:
-                    continue
-                if hasattr(c, 'get_game_variable') and isinstance(getattr(c, 'get_game_variable'), types.MethodType):
+                if c and hasattr(c, 'get_game_variable'):
                     try:
                         return c.get_game_variable(var)
-                    except Exception:
+                    except:
                         continue
-        except Exception:
+        except:
             pass
-        return 0
-
-    def _get_available_game_variables(self):
-        """Attempt to discover available game variables exposed by the underlying game object."""
-        try:
-            curr = self.env
-            seen = set()
-            while curr is not None and id(curr) not in seen:
-                seen.add(id(curr))
-                if hasattr(curr, 'get_available_game_variables') and isinstance(getattr(curr, 'get_available_game_variables'), types.MethodType):
-                    try:
-                        return curr.get_available_game_variables()
-                    except Exception:
-                        pass
-                if hasattr(curr, 'game') and hasattr(curr.game, 'get_available_game_variables'):
-                    try:
-                        return curr.game.get_available_game_variables()
-                    except Exception:
-                        pass
-                if hasattr(curr, 'unwrapped') and curr.unwrapped is not curr:
-                    curr = curr.unwrapped
-                elif hasattr(curr, 'env') and curr.env is not curr:
-                    curr = curr.env
-                else:
-                    break
-        except Exception:
-            pass
-        return None
+        return 0.0
 
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
-        # 记录初始状态，默认 AMMO2 设为 0（更稳健）
-        # Use _query_game_variable as a fallback when info doesn't contain values
+        # 初始化变量记录
         self.prev_vars = {
-            'KILLCOUNT': info.get('KILLCOUNT', self._query_game_variable(vzd.GameVariable.FRAGCOUNT)),
-            'HITCOUNT': info.get('HITCOUNT', self._query_game_variable(vzd.GameVariable.HITCOUNT)),
-            'HEALTH': info.get('HEALTH', self._query_game_variable(vzd.GameVariable.HEALTH)),
-            'AMMO2': info.get('AMMO2', self._query_game_variable(vzd.GameVariable.AMMO2)),
+            'KILLCOUNT': self._query_game_variable(vzd.GameVariable.KILLCOUNT),
+            'HITCOUNT': self._query_game_variable(vzd.GameVariable.HITCOUNT),
+            'HEALTH': self._query_game_variable(vzd.GameVariable.HEALTH),
+            'AMMO2': self._query_game_variable(vzd.GameVariable.AMMO2),
         }
-        # 如果 HITCOUNT 不存在，尝试查询底层 game 的可用变量并给出更精确的提示
-        if 'HITCOUNT' not in info:
-            available = self._get_available_game_variables()
-            if available:
-                print(f"[Warning] HITCOUNT not in env.info. Underlying game reports available variables: {available}. If HITCOUNT absent, add it to scenario's available_game_variables.")
-            else:
-                print("[Warning] HITCOUNT not present in env.info and could not detect underlying game's available variables. Ensure 'available_game_variables = { KILLCOUNT HITCOUNT AMMO2 HEALTH FRAGCOUNT }' is present in the scenario .cfg and restart.")
         return obs, info
 
     def step(self, action):
         obs, reward, terminated, truncated, info = self.env.step(action)
-        
-        # --- 基础生存奖励 (轻微正向，鼓励存活) ---
-        reward += 0.01
 
-        # --- 命中奖励 (比之前更显著，鼓励瞄准) ---
-        # 如果 info 中没有 HITCOUNT，则尝试从底层 DoomGame 查询
-        current_hits = info.get('HITCOUNT', None)
-        if current_hits is None:
-            current_hits = self._query_game_variable(vzd.GameVariable.HITCOUNT)
-        diff_hits = current_hits - self.prev_vars.get('HITCOUNT', 0)
-        if diff_hits > 0:
-            reward += 5.0 * diff_hits
+        # --- 1. 获取关键数据 ---
+        curr_hits = self._query_game_variable(vzd.GameVariable.HITCOUNT)
+        curr_kills = self._query_game_variable(vzd.GameVariable.KILLCOUNT)
+        curr_health = self._query_game_variable(vzd.GameVariable.HEALTH)
+        curr_ammo = self._query_game_variable(vzd.GameVariable.AMMO2)
 
-        # --- 击杀奖励 ---
-        current_kills = info.get('KILLCOUNT', None)
-        if current_kills is None:
-            # FRAGCOUNT is equivalent to KILLCOUNT in some scenarios
-            current_kills = self._query_game_variable(vzd.GameVariable.FRAGCOUNT)
-        diff_kills = current_kills - self.prev_vars.get('KILLCOUNT', 0)
+        # 计算增量
+        diff_hits = curr_hits - self.prev_vars.get('HITCOUNT', 0)
+        diff_kills = curr_kills - self.prev_vars.get('KILLCOUNT', 0)
+        diff_health = curr_health - self.prev_vars.get('HEALTH', 100)
+        diff_ammo = self.prev_vars.get('AMMO2', 0) - curr_ammo # 消耗了多少子弹
+
+        # --- 2. 奖励工程 (核心修改) ---
+
+        # A. 基础生存奖励 (活着就是胜利)
+        reward += 0.02 
+
+        # B. 击杀奖励 (大奖)
         if diff_kills > 0:
-            reward += 15.0 * diff_kills
+            reward += 10.0 * diff_kills
 
-        # --- 弹药减少（射击）惩罚（非常轻微） ---
-        prev_ammo = self.prev_vars.get('AMMO2', 0)
-        current_ammo = info.get('AMMO2', prev_ammo)
-        diff_ammo = prev_ammo - current_ammo
-        if diff_ammo > 0:
-            # 如果开火了 (diff_ammo > 0)
+        # C. 命中机制 (关键!)
+        if diff_hits > 0:
+            # 打中了！给予奖励
+            reward += 2.0 * diff_hits
+        
+        # D. 开枪惩罚逻辑 (Sniper Logic)
+        if diff_ammo > 0: # 如果这一帧消耗了子弹（说明开枪了）
             if diff_hits > 0:
-                # 且击中了 -> 奖励抵消消耗，甚至额外奖励
+                # 开枪且命中了：稍微抵消一点弹药消耗，鼓励有效射击
                 reward += 0.5 
             else:
-                # 开火了但没击中 -> 空枪惩罚！
-                # 这会迫使 Agent 只有在有把握（瞄准了）的时候才开枪
-                reward -= 0.1 
-
-        # --- 掉血惩罚（降低权重，避免过于胆小） ---
-        current_health = info.get('HEALTH', 100)
-        diff_health = current_health - self.prev_vars.get('HEALTH', 100)
-        if diff_health < 0:
-            reward += 0.05 * diff_health  # 负值
-
-        # 更新记录
-        self.prev_vars.update({
-            'KILLCOUNT': current_kills,
-            'HITCOUNT': current_hits,
-            'HEALTH': current_health,
-            'AMMO2': current_ammo,
-        })
-
-        # Augment info with incremental metrics for logging (SF / TB / CSV friendly)
-        try:
-            info['HIT_INC'] = int(diff_hits)
-            info['KILL_INC'] = int(diff_kills)
-            info['AMMO_USED'] = int(max(0, prev_ammo - current_ammo))
-        except Exception:
-            # Ensure we never break env contract
-            pass
+                # 开枪但没命中 (空枪)：重罚！
+                # 之前的惩罚几乎为0，现在设为 -1.0
+                # 这意味着开一枪空枪的代价，相当于丢了半条命，或者抵消了半次命中的奖励
+                reward -= 1.0 
         
+        # E. 掉血惩罚 (轻微，避免过于畏缩)
+        if diff_health < 0:
+            reward += 0.1 * diff_health # diff_health是负数
+
+        # F. 弹药管理 (捡到子弹给奖励，防止没子弹干瞪眼)
+        if curr_ammo > self.prev_vars.get('AMMO2', 0):
+             reward += 0.5
+
+        # --- 3. 更新状态 ---
+        self.prev_vars = {
+            'KILLCOUNT': curr_kills,
+            'HITCOUNT': curr_hits,
+            'HEALTH': curr_health,
+            'AMMO2': curr_ammo,
+        }
+
+        # 注入 Info 供 Tensorboard 观察
+        info['HIT_INC'] = diff_hits
+        info['KILL_INC'] = diff_kills
+        info['AMMO_USED'] = diff_ammo
+
         return obs, reward, terminated, truncated, info
 
 class ImageCleaningWrapper(gym.ObservationWrapper):
     """
-    图像预处理包装器。
-    实现：垂直裁剪 (移除HUD)、保持长宽比缩放、归一化。
-    
-    【重要修复】不再强制拉伸为正方形 (112x112)，而是使用 4:3 比例 (128x96)。
-    原因：强制拉伸会破坏几何特征，导致 Agent 难以学习精确瞄准。
-    使用 cv2.INTER_AREA 在缩小时保留更多细节。
+    修复视觉畸变：保持 4:3 比例，不强行拉伸
     """
     def __init__(self, env):
         super().__init__(env)
-        # 使用 4:3 的分辨率，128x96 是一个平衡了性能和细节的选择
+        # 目标分辨率：128x96 (4:3)
         self.w, self.h = 128, 96
         self.observation_space = gym.spaces.Box(
             low=0, high=1, shape=(3, self.h, self.w), dtype=np.float32
         )
         
     def observation(self, obs):
-        # VizDoom 出来的 obs 可能是 (H, W, 3) 或者是 (3, H, W)
-        # 统一处理为 HWC 进行裁剪和缩放
+        # 统一格式 (C, H, W) -> (H, W, C)
         if obs.shape[0] == 3:
             obs = np.transpose(obs, (1, 2, 0))
             
         h, w, c = obs.shape
         
-        # 1. 垂直裁剪 (Vertical Crop)
-        # 顶部少裁一点 (5%)，底部移除 HUD (15%)
-        top_cut = int(h * 0.05)
-        bot_cut = int(h * 0.15)
-        obs = obs[top_cut:h-bot_cut, :, :]
+        # 1. 垂直裁剪 (切掉底部的状态栏)
+        # 假设底部 15% 是状态栏，顶部切一点点
+        top_crop = int(h * 0.05)
+        bot_crop = int(h * 0.15)
+        obs = obs[top_crop:h-bot_crop, :, :]
         
-        # 2. 缩放 (保持 4:3 比例)
-        # 使用 cv2.INTER_AREA 可以在缩小时保留更多细节（抗锯齿）
+        # 2. 调整大小 (使用 INTER_AREA 抗锯齿)
+        # 不再做中心裁剪，而是直接缩放到 128x96
+        # 虽然这还是会有轻微拉伸（如果原图裁剪后不是4:3），但比之前压成正方形好得多
         obs = cv2.resize(obs, (self.w, self.h), interpolation=cv2.INTER_AREA)
         
-        # 3. 调整维度顺序 HWC -> CHW (PyTorch 需要)
+        # 3. 归一化 & 转回 (C, H, W)
         obs = np.transpose(obs, (2, 0, 1))
-        
-        # 4. 归一化
         obs = obs.astype(np.float32) / 255.0
-        
         return obs
+
 class CompositeActionWrapper(gym.ActionWrapper):
     """
-    将原始的离散动作空间扩展，包含组合动作。
-    针对 Defend the Center 优化：允许同时转头和开火。
+    动作组合器：让 Agent 可以一边转一边开火。
+    [0:左, 1:右, 2:开火, 3:左+开火, 4:右+开火]
     """
     def __init__(self, env):
         super().__init__(env)
-        # 假设原始环境有 3 个动作: [左转, 右转, 开火]
-        self.action_space = gym.spaces.Discrete(5)
-
-        # 试图从底层 env 中获取动作映射（如 VizDoomEnv.actions），以便我们能把按钮向量映射
-        # 回底层的离散动作索引（避免直接传 list 导致类型错误）。
-        self._action_mapping = None
-        try:
-            base = env
-            while hasattr(base, 'env'):
-                base = base.env
-            # 一些实现使用 'actions' 或 '_actions' 来保存离散动作列表
-            actions_list = None
-            if hasattr(base, 'actions'):
-                actions_list = getattr(base, 'actions')
-            elif hasattr(base, '_actions'):
-                actions_list = getattr(base, '_actions')
-
-            if actions_list is not None:
-                # 以 tuple 作为键建立映射
-                self._action_mapping = {tuple(a): i for i, a in enumerate(actions_list)}
-                print(f"[Debug] CompositeActionWrapper built mapping of {len(self._action_mapping)} actions")
-            else:
-                print("[Warning] Could not find underlying discrete actions list; CompositeActionWrapper will attempt fallbacks.")
-        except Exception as e:
-            print(f"[Warning] Error while building action mapping: {e}")
+        self.action_space = gym.spaces.Discrete(5) 
 
     def action(self, act):
-        # 这里的映射逻辑需要与 step 中的 real_action 对应
-        return act 
+        return act # 占位，实际逻辑在 step
 
     def step(self, action):
-        # 将离散 ID 转换为 VizDoom 的按钮列表 [TURN_LEFT, TURN_RIGHT, ATTACK]
-        real_action = [0, 0, 0]
-
-        if action == 0:
-            real_action = [1, 0, 0]  # 左转
-        elif action == 1:
-            real_action = [0, 1, 0]  # 右转
-        elif action == 2:
-            real_action = [0, 0, 1]  # 开火
-        elif action == 3:
-            real_action = [1, 0, 1]  # 左转 + 开火
-        elif action == 4:
-            real_action = [0, 1, 1]  # 右转 + 开火
-
-        # 如果我们有底层的动作映射，则优先使用映射的离散索引（整数），以匹配底层接口期望
-        if self._action_mapping is not None:
-            key = tuple(int(x) for x in real_action)
-            mapped = self._action_mapping.get(key, None)
-            if mapped is not None:
-                return self.env.step(mapped)
-            else:
-                # 如果映射中没有精确项，则尝试最接近的匹配（Hamming 距离最小）
-                best_k = None
-                best_d = None
-                for k in self._action_mapping.keys():
-                    d = sum(a != b for a, b in zip(k, key))
-                    if best_d is None or d < best_d:
-                        best_d = d
-                        best_k = k
-                if best_k is not None:
-                    mapped = self._action_mapping[best_k]
-                    print(f"[Debug] CompositeActionWrapper: no exact mapping for {key}, using nearest action {best_k} (idx {mapped})")
-                    return self.env.step(mapped)
-                else:
-                    print("[Warning] No mapping available; falling back to sending raw button list (may fail).")
-
-        # 最后备选：尝试发送 numpy array（许多底层会接受 numpy array），或者 tuple
-        try:
-            import numpy as _np
-            return self.env.step(_np.array(real_action, dtype=_np.int8))
-        except Exception:
-            try:
-                return self.env.step(tuple(real_action))
-            except Exception as e:
-                # 最后还是抛出异常，保留原始行为
-                raise e
+        # 映射表: [TURN_LEFT, TURN_RIGHT, ATTACK]
+        # 注意：这里的 1 和 0 取决于你的 .cfg 文件中 available_buttons 的顺序
+        # 通常顺序是: TURN_LEFT, TURN_RIGHT, ATTACK
+        
+        real_action = [0, 0, 0] # 默认不动
+        
+        if action == 0: real_action = [1, 0, 0]   # 左
+        elif action == 1: real_action = [0, 1, 0] # 右
+        elif action == 2: real_action = [0, 0, 1] # 开火
+        elif action == 3: real_action = [1, 0, 1] # 左+开火 (扫射)
+        elif action == 4: real_action = [0, 1, 1] # 右+开火 (扫射)
+        
+        # 极其关键：因为我们 hack 了底层的 step，需要判断底层接受什么
+        # 我们的 CustomVizdoomEnv 已经修改为接受 list，所以直接传
+        return self.env.step(real_action)
