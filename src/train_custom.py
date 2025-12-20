@@ -27,9 +27,9 @@ def main():
         model="custom_vizdoom_model",
         # 【新增】叠加最近4帧，让 Agent 能感知"速度"和运动方向
         frame_stack=4, 
-        # 【明确设置】env_frameskip=2，与环境默认值一致
-        # frameskip=2 更适合瞄准类任务（控制更平滑）
-        env_frameskip=2,
+        # 【明确设置】env_frameskip=1（更细粒度控制，以利于精准瞄准）
+        # frameskip=1 提供最高操作频率，适合需要精确操作的任务
+        env_frameskip=1,
         # 【调整】稍微提高学习率，加快初期收敛
         learning_rate=0.0002,
         # 【关键修改】大幅提高熵系数，增强探索能力，防止陷入局部最优

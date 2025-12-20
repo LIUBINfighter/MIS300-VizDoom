@@ -87,7 +87,45 @@ def main():
     
     args = parser.parse_args()
     device = torch.device(args.device)
+
+    # 🔍 尝试从 checkpoint 自动推断 rnn_size，以确保评估时模型结构与训练时一致
+    inferred_rnn_size = None
+    try:
+        tmp_ckpt = torch.load(args.checkpoint, map_location='cpu', weights_only=False)
+        tmp_state = tmp_ckpt['model'] if 'model' in tmp_ckpt else tmp_ckpt
+        for k, v in tmp_state.items():
+            # GRU 的 weight_ih_l0 形状为 (3 * hidden_size, input_size)
+            if k.endswith('.gru.weight_ih_l0') or '.gru.weight_ih_l0' in k:
+                size = v.shape[0]
+                if size % 3 == 0:
+                    inferred_rnn_size = size // 3
+                    break
+    except Exception:
+        inferred_rnn_size = None
+
+    # 🔍 尝试从 checkpoint 自动推断 decoder 输出大小（action/value head 的输入维度）
+    inferred_decoder_out = None
+    try:
+        tmp_ckpt = torch.load(args.checkpoint, map_location='cpu', weights_only=False)
+        tmp_state = tmp_ckpt['model'] if 'model' in tmp_ckpt else tmp_ckpt
+        for k, v in tmp_state.items():
+            if k.endswith('action_heads.linear.weight') or '.action_heads.linear.weight' in k:
+                inferred_decoder_out = v.shape[1]
+                break
+            if k.endswith('value_head.weight') or '.value_head.weight' in k:
+                inferred_decoder_out = v.shape[1]
+                break
+    except Exception:
+        inferred_decoder_out = None
+
     cfg = get_eval_config(args)
+    if inferred_rnn_size is not None and cfg.rnn_size != inferred_rnn_size:
+        print(f"[Info] Inferred rnn_size={inferred_rnn_size} from checkpoint; overriding cfg.rnn_size (was {cfg.rnn_size})")
+        cfg.rnn_size = inferred_rnn_size
+    if inferred_decoder_out is not None:
+        if not isinstance(cfg.decoder_mlp_layers, list) or cfg.decoder_mlp_layers[-1] != inferred_decoder_out:
+            print(f"[Info] Inferred decoder_out_size={inferred_decoder_out} from checkpoint; overriding cfg.decoder_mlp_layers (was {cfg.decoder_mlp_layers})")
+            cfg.decoder_mlp_layers = [inferred_decoder_out]
 
     print(f"\n🎬 === Starting Evaluation ===")
     print(f"   Env:        {args.env}")
