@@ -64,10 +64,17 @@ class CustomVizdoomEncoder(Encoder):
         else:
             self.obs_shape = obs_space.shape
         input_channels = self.obs_shape[0]
+        # 修改 CNN 架构：更细腻的感受野，捕捉远处的敌人
         self.cnn = nn.Sequential(
-            nn.Conv2d(input_channels, 32, kernel_size=8, stride=4), nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2), nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1), nn.ReLU(),
+            # 更细腻的第一层感受野：kernel=3, stride=1，帮助捕捉远处小目标
+            nn.Conv2d(input_channels, 32, kernel_size=3, stride=1, padding=1), 
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1), 
+            nn.ReLU(),
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1), 
+            nn.ReLU(),
+            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1), 
+            nn.ReLU(),
             nn.Flatten(),
         )
         with torch.no_grad():

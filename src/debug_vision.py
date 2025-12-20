@@ -15,24 +15,39 @@ def debug_agent_vision():
     output_dir = "dist/debug_vision"
     os.makedirs(output_dir, exist_ok=True)
     
-    print(f"📸 Saving agent's actual observation (84x84) to {output_dir}...")
+    print(f"📸 Saving agent's actual observation to {output_dir}...")
     
     for i in range(20):
         # 随机动作让画面动起来
         obs, reward, term, trunc, info = env.step(env.action_space.sample())
         
-        # obs 是 [Channel, Height, Width] -> [1, 84, 84] (如果是灰度)
-        # 或者是 [4, 84, 84] (如果开了 Stack)
-        
+        # obs 是 [Channel, Height, Width]
         # 我们只看最新的一帧 (obs[0] 或 obs[-1])
         if len(obs.shape) == 3:
             # 如果是 (C, H, W)
-            img_data = obs[0] if obs.shape[0] == 1 else obs[-1] 
+            img_data = obs # 保持 (C, H, W)
         else:
+            # 异常情况处理
             img_data = obs
             
-        # 反归一化：从 [0, 1]变回 [0, 255]
-        img_visual = (img_data * 255.0).astype(np.uint8)
+        # 转换为 HWC 格式用于 OpenCV
+        if img_data.shape[0] == 3:
+            img_visual = np.transpose(img_data, (1, 2, 0))
+        else:
+            img_visual = img_data
+            
+        # 反归一化：从 [0, 1] 变回 [0, 255]
+        img_visual = (img_visual * 255.0).astype(np.uint8)
+        
+        # 确保是 BGR 格式 (如果是 RGB)
+        img_visual = cv2.cvtColor(img_visual, cv2.COLOR_RGB2BGR)
+        
+        # --- 关键：画一个中心十字线验证准心 ---
+        h, w = img_visual.shape[:2]
+        cx, cy = w // 2, h // 2
+        # 绿色十字 (B, G, R)
+        cv2.line(img_visual, (cx - 5, cy), (cx + 5, cy), (0, 255, 0), 1)
+        cv2.line(img_visual, (cx, cy - 5), (cx, cy + 5), (0, 255, 0), 1)
         
         # 保存图片
         cv2.imwrite(f"{output_dir}/frame_{i:03d}.png", img_visual)

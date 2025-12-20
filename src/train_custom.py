@@ -25,12 +25,15 @@ def main():
     # 强制修改默认参数
     parser.set_defaults(
         model="custom_vizdoom_model",
-        # 【新增】叠加最近4帧，让 Agent 能感知“速度”
+        # 【新增】叠加最近4帧，让 Agent 能感知"速度"和运动方向
         frame_stack=4, 
-        # 【新增】调整学习率，默认的可能太高或太低
-        learning_rate=0.0001,
-        # 【建议】降低熵系数，现在的 0.04 太高了，导致 Agent 行为过于随机
-        entropy_coeff=0.001 
+        # 【明确设置】env_frameskip=2，与环境默认值一致
+        # frameskip=2 更适合瞄准类任务（控制更平滑）
+        env_frameskip=2,
+        # 【调整】稍微提高学习率，加快初期收敛
+        learning_rate=0.0002,
+        # 【关键修改】大幅提高熵系数，增强探索能力，防止陷入局部最优
+        entropy_coeff=0.01 
     )
     
     cfg = parse_full_cfg(parser)
