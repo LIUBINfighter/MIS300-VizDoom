@@ -31,7 +31,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # 2. 安装包管理工具 Poetry
 RUN curl -sSL https://install.python-poetry.org | python3 -
-ENV PATH="/root/.local/bin:$PATH"
+ENV PATH="/root/.local/bin:$PATH" \
+    # 增加超时时间，防止大文件下载失败
+    POETRY_HTTP_TIMEOUT=600
 
 # 3. 设置工作目录
 WORKDIR /app

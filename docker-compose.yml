@@ -5,6 +5,8 @@ services:
     shm_size: "2gb"
     volumes:
       - .:/app
+    ports:
+      - "6007:6006" 
     # 如果你有 NVIDIA GPU，开启以下配置
     # deploy:
     #   resources:
