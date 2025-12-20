@@ -5,6 +5,7 @@ import cv2
 class RewardShapingWrapper(gym.Wrapper):
     """
     自定义奖励包装器。
+    针对 Defend Center 优化的版本。
     """
     def __init__(self, env):
         super().__init__(env)
@@ -16,43 +17,40 @@ class RewardShapingWrapper(gym.Wrapper):
         self.prev_vars = {
             'KILLCOUNT': info.get('KILLCOUNT', 0),
             'HEALTH': info.get('HEALTH', 100),
-            'AMMO2': info.get('AMMO2', 0),
-            'POSITION_X': info.get('POSITION_X', 0),
+            'AMMO2': info.get('AMMO2', 50), # 确保默认值合理
         }
         return obs, info
 
     def step(self, action):
         obs, reward, terminated, truncated, info = self.env.step(action)
         
-        # 1. 击杀奖励 (针对所有场景)
+        # --- 修复 1: 大幅增加杀敌奖励 ---
+        # 原始奖励可能太小，不足以抵消掉血的惩罚
         current_kills = info.get('KILLCOUNT', 0)
         diff_kills = current_kills - self.prev_vars.get('KILLCOUNT', 0)
+        
         if diff_kills > 0:
-            reward += 20.0 * diff_kills # 死亡走廊杀敌更难，给 20 分
+            # 杀敌是唯一目标，给予巨额奖励，让 Agent "上瘾"
+            reward += 1.0  # 假设 VizDoom 原始配置已经给了分，这里额外加分
+            # 注意：如果原始配置没给分，这里建议给 +100.0
 
-        # 2. 前进奖励 (专门针对死亡走廊)
-        # 假设走廊是沿 X 轴延伸的
-        current_x = info.get('POSITION_X', 0)
-        diff_x = current_x - self.prev_vars.get('POSITION_X', 0)
-        if diff_x > 0:
-            reward += diff_x * 0.01 # 鼓励向前走
+        # --- 修复 2: 移除“位置移动”奖励 ---
+        # Defend the Center 是圆周运动，X轴位移奖励是噪音，必须删除。
 
-        # 3. 掉血惩罚
+        # --- 修复 3: 移除“开枪惩罚” ---
+        # 只有在高级阶段才需要节省弹药。初期必须鼓励开枪。
+        
+        # --- 4. 掉血惩罚 (保留但减小权重) ---
+        # 让 Agent 稍微在意一下血量，但不要让它怕到不敢动
         current_health = info.get('HEALTH', 100)
         diff_health = current_health - self.prev_vars.get('HEALTH', 100)
         if diff_health < 0:
-            reward += 0.5 * diff_health # 死亡走廊子弹多，惩罚重一点
-
-        # 4. 弹药惩罚
-        current_ammo = info.get('AMMO2', 0)
-        if current_ammo < self.prev_vars.get('AMMO2', 0):
-            reward -= 0.2
+            reward += 0.05 * diff_health  # 降低惩罚权重，避免 Agent 绝望
 
         self.prev_vars.update({
             'KILLCOUNT': current_kills,
             'HEALTH': current_health,
-            'AMMO2': current_ammo,
-            'POSITION_X': current_x,
+            'AMMO2': info.get('AMMO2', 0),
         })
         
         return obs, reward, terminated, truncated, info

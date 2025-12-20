@@ -24,9 +24,9 @@ def get_files():
         files_to_include.extend(sorted(src_dir.rglob("*.py")))
 
     # 3. .md files in ./docs/dev recursively
-    docs_dev_dir = root / "docs" / "dev"
-    if docs_dev_dir.exists():
-        files_to_include.extend(sorted(docs_dev_dir.rglob("*.md")))
+    # docs_dev_dir = root / "docs" / "dev"
+    # if docs_dev_dir.exists():
+    #     files_to_include.extend(sorted(docs_dev_dir.rglob("*.md")))
 
     return files_to_include
 

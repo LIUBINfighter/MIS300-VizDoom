@@ -1,37 +1,27 @@
-import torch
+﻿import torch
 import numpy as np
 import numpy.dtypes
-import functools
+import sys
 
-# --- 1. 注入白名单和黑魔法 ---
+# --- 1. 注入白名单 ---
 torch.serialization.add_safe_globals([
     np.core.multiarray.scalar, np.dtype, np.dtypes.Float64DType, np.dtypes.Int64DType
 ])
 
-# 核心手术：拦截 torch.load 并修复 state_dict 的 Key
+# --- 2. 关键修复：移除之前的 Hacky Patch，因为问题不在 Key 名字，而在模型架构 ---
 original_torch_load = torch.load
-
 def patched_torch_load(*args, **kwargs):
-    # 强制关闭 weights_only 以确保能读取完整字典
     kwargs['weights_only'] = False
-    checkpoint = original_torch_load(*args, **kwargs)
-    
-    if isinstance(checkpoint, dict) and "model" in checkpoint:
-        print("🔧 检测到权重 Key 不匹配，正在进行自动修复...")
-        new_model_state = {}
-        for k, v in checkpoint["model"].items():
-            # 将 encoder.encoders.obs.enc 替换为 encoder.basic_encoder.enc
-            new_key = k.replace("encoder.encoders.obs.enc", "encoder.basic_encoder.enc")
-            new_model_state[new_key] = v
-        checkpoint["model"] = new_model_state
-    return checkpoint
-
+    return original_torch_load(*args, **kwargs)
 torch.load = patched_torch_load
 
-# --- 2. 运行 Enjoy ---
+# --- 3. 导入 Sample Factory 和 项目模块 ---
 from sf_examples.vizdoom.enjoy_vizdoom import main
-import src.envs  # 👈 确保这一行存在，用于注册自定义环境
+import src.envs  # 注册环境
+from src.models import register_models # <--- 【新增】导入模型注册函数
 
 if __name__ == "__main__":
-    # main() 会自动解析 sys.argv
+    # 【新增】必须在 main() 之前注册自定义模型！
+    register_models() 
+    
     main()
