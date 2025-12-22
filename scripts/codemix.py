@@ -34,8 +34,8 @@ def main():
     files = get_files()
     
     # Create dist directory if it doesn't exist
-    dist_dir = Path("dist")
-    dist_dir.mkdir(exist_ok=True)
+    dist_dir = Path("dist/codemix")
+    dist_dir.mkdir(exist_ok=True, parents=True)
     
     timestamp = time.strftime("%Y%m%d%H%M%S")
     output_file = dist_dir / f"codemix-{timestamp}.md"
