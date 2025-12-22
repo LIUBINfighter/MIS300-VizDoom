@@ -1,0 +1,10 @@
+sample-factory==2.1.1
+vizdoom==1.2.3
+gymnasium==0.28.1
+numpy==1.24.0
+torch==2.0.0
+tensorboard==2.12.0
+opencv-python==4.7.0.72
+# If running in a headless/container environment, consider `opencv-python-headless` to avoid GUI-related dependencies
+moviepy==1.0.3
+# Note: This is a minimal pinned set. Use `poetry export -f requirements.txt --without-hashes -o requirements.txt` to regenerate a full, locked requirements file.

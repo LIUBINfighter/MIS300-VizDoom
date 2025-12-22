@@ -29,8 +29,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. 安装包管理工具 Poetry
-RUN curl -sSL https://install.python-poetry.org | python3 -
+# 2. 可选安装包管理工具（默认使用 uv/pip，使用 poetry 可作为备用）
+#    通过构建时参数切换：
+#      docker build --build-arg INSTALL_METHOD=uv .    # 使用 pip+requirements.txt（默认）
+#      docker build --build-arg INSTALL_METHOD=poetry .# 使用 Poetry
+ARG INSTALL_METHOD=uv
+RUN if [ "$INSTALL_METHOD" = "poetry" ]; then \
+    curl -sSL https://install.python-poetry.org | python3 -; \
+  else \
+    echo "Skipping Poetry installation (INSTALL_METHOD=$INSTALL_METHOD)"; \
+  fi
 ENV PATH="/root/.local/bin:$PATH" \
     # 增加超时时间，防止大文件下载失败
     POETRY_HTTP_TIMEOUT=600
@@ -39,11 +47,16 @@ ENV PATH="/root/.local/bin:$PATH" \
 WORKDIR /app
 
 # 4. 拷贝依赖描述文件 (利用 Docker 缓存机制)
-COPY pyproject.toml poetry.lock* /app/
+COPY pyproject.toml poetry.lock* requirements.txt /app/
 
 # 5. 安装依赖 (不安装项目本身，只安装依赖)
-# 如果没有 poetry.lock 会自动创建
-RUN poetry install --no-interaction --no-ansi --no-root
+#    支持两种方式：uv (pip + requirements.txt) 或 poetry
+RUN if [ "$INSTALL_METHOD" = "uv" ]; then \
+    python -m pip install --upgrade pip setuptools wheel && \
+    if [ -f requirements.txt ]; then pip install -r requirements.txt; else echo "requirements.txt missing"; exit 1; fi; \
+  else \
+    poetry install --no-interaction --no-ansi --no-root; \
+  fi
 
 # 6. 拷贝源代码
 COPY . /app/

@@ -1,0 +1,46 @@
+# Docker ignore file - exclude large files and build artifacts
+# Explicitly requested exclusions
+dist/
+train_dir/
+
+# Common files to ignore
+.git
+.gitignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+.venv/
+venv/
+.vscode/
+.idea/
+
+# Build artifacts
+build/
+*.egg-info/
+*.egg
+*.whl
+
+# Data, logs, checkpoints, and temporary
+*.log
+*.tmp
+*.cache
+*.bak
+*.ckpt
+*.pth
+*.pth.tar
+*.tar.gz
+*.zip
+*.tar
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Ignore local notebooks and large datasets
+*.ipynb
+data/
+
+# If you add heavy files later, add them here (e.g., model weights)
