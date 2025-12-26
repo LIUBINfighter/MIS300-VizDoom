@@ -1,0 +1,27 @@
+name: Smoke Test - Custom Training
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  smoke_train_uv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image (uv/pip)
+        run: docker build --build-arg INSTALL_METHOD=uv -t mis300-vizdoom:ci .
+      - name: Run smoke train
+        run: |
+          docker run --rm --shm-size=2g --entrypoint /bin/bash mis300-vizdoom:ci -c "./scripts/smoke_custom_train.sh custom_doom_basic /tmp/smoke_train 1000 1 1 cpu"
+
+  smoke_train_poetry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image (poetry)
+        run: docker build --build-arg INSTALL_METHOD=poetry -t mis300-vizdoom:ci-poetry .
+      - name: Run smoke train
+        run: |
+          docker run --rm --shm-size=2g --entrypoint /bin/bash mis300-vizdoom:ci-poetry -c "./scripts/smoke_custom_train.sh custom_doom_basic /tmp/smoke_train 1000 1 1 cpu"

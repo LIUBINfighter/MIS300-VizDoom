@@ -22,7 +22,7 @@
 
     docker build --build-arg INSTALL_METHOD=poetry -t mis300-vizdoom:poetry .
 
-- 本地验证镜像（运行内置 demo 或 quick test）：
+- 本地验证镜像（运行内置 demo、quick test 或短时训练）：
 
   - 运行默认主进程（容器内会以 `xvfb-run` 启动）：
 
@@ -31,6 +31,15 @@
   - 或执行快速测试脚本：
 
     docker run --rm -it mis300-vizdoom:latest python quick_test.py
+
+  - 运行 custom training 的短时 smoke test（在容器内部运行脚本）：
+
+    docker run --rm --shm-size=2g --entrypoint /bin/bash mis300-vizdoom:latest -c "./scripts/smoke_custom_train.sh custom_doom_basic /tmp/smoke_train 1000 1 1 cpu"
+
+  - 注：若在 CI 或 runner 上出现共享内存相关崩溃（Bus error），请增加 `--shm-size` 或使用 `--ipc=host`。
+  - Windows PowerShell（本地）运行短时训练：
+
+    .\scripts\smoke_custom_train.ps1 -TrainDir C:\\tmp\\smoke_train -Steps 1000 -NumWorkers 1 -NumEnvs 1 -Device cpu
 
 - 本地开发（Windows）：使用 `scripts\install.ps1`：
 

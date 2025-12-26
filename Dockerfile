@@ -61,6 +61,9 @@ RUN if [ "$INSTALL_METHOD" = "uv" ]; then \
 # 6. 拷贝源代码
 COPY . /app/
 
+# Ensure scripts are executable (some filesystems/OS may lose executable bits)
+RUN if [ -d /app/scripts ]; then chmod +x /app/scripts/*.sh || true; fi
+
 # 7. 启动脚本：默认开启虚拟屏幕渲染
 # 这是一个包装器，确保所有 GUI 相关的调用都在 xvfb 中运行
 ENTRYPOINT ["xvfb-run", "-s", "-screen 0 640x480x24"]

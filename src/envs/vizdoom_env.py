@@ -64,7 +64,16 @@ def create_vizdoom_env(env_name, cfg=None, env_config=None, render_mode=None, **
         if os.path.exists(local_wad_path):
             final_wad_path = local_wad_path
         elif os.path.exists(sys_wad_path):
-            final_wad_path = sys_wad_path # 使用系统路径
+            # 系统路径存在：尝试把 WAD 拷贝到本地目录，避免在 cfg 中写入绝对路径时被引擎错误拼接
+            try:
+                import shutil
+                shutil.copyfile(sys_wad_path, local_wad_path)
+                final_wad_path = local_wad_path
+                print(f"[Info] Copied WAD from {sys_wad_path} to {local_wad_path}")
+            except Exception as e:
+                # 如果拷贝失败，回退到使用系统路径（并在后续写入时加引号）
+                final_wad_path = sys_wad_path
+                print(f"[Warning] Failed to copy WAD: {e}. Falling back to system path {sys_wad_path}")
         else:
             # 两个地方都没有，报错并提示
             raise FileNotFoundError(
@@ -89,9 +98,11 @@ def create_vizdoom_env(env_name, cfg=None, env_config=None, render_mode=None, **
         import re
         # 如果 WAD 位于 local_dir，则只写入文件名（cfg 与 wad 同目录），避免引擎将 cfg 目录与绝对路径拼接导致重复路径
         if str(final_wad_path).startswith(str(local_dir)):
+            # WAD 与 CFG 同目录，直接写文件名以避免引擎把绝对路径当相对路径拼接
             content = re.sub(r'doom_scenario_path\s*=\s*.*', f'doom_scenario_path = {wad_name}', content)
         else:
-            content = re.sub(r'doom_scenario_path\s*=\s*.*', f'doom_scenario_path = {final_wad_path}', content)
+            # 使用引号包裹绝对路径，减少解析歧义
+            content = re.sub(r'doom_scenario_path\s*=\s*.*', f'doom_scenario_path = "{final_wad_path}"', content)
 
         # 确保变量存在：如果已有 available_game_variables，保证包含 HITCOUNT
         m = re.search(r'available_game_variables\s*=\s*\{([^}]*)\}', content)
