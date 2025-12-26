@@ -1,5 +1,12 @@
 # MIS300-VizDoom
 
+## 😅看起来出了点问题
+
+```bash
+docker run --rm --shm-size=2g --entrypoint /bin/bash mis300-vizdoom:latest -c "./scripts/smoke_custom_train.sh custom_doom_basic /tmp/smoke_train 100 1 2 cpu"
+
+```
+
 ## Plan
 
 - Env & `docker-compose build`
